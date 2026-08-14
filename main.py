@@ -12,7 +12,7 @@ from .image_api import ImageAPIClient, ImageGenerationError, GeneratedImage
     "image_generator",
     "Siyo",
     "可配置图片生成 API，并提供绘图命令与 LLM 绘图工具",
-    "1.2.0",
+    "1.3.0",
 )
 class ImageGeneratorPlugin(star.Star):
     def __init__(self, context: star.Context, config: AstrBotConfig) -> None:

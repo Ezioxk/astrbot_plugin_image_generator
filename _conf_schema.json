@@ -4,7 +4,20 @@
     "description": "API 平台",
     "default": "aliyun_bailian",
     "options": ["aliyun_bailian", "aliyun_bailian_native", "volcengine_ark", "zhipu", "siliconflow", "baidu_qianfan", "openai", "custom"],
-    "hint": "aliyun_bailian 使用百炼 OpenAI 兼容接口，支持 wan2.6-t2i、Qwen-Image 等新模型；aliyun_bailian_native 仅用于旧万相异步模型。"
+    "hint": "aliyun_bailian 使用业务空间多模态接口，支持 wan2.6-t2i、Qwen-Image 等新模型；aliyun_bailian_native 仅用于旧万相异步模型。"
+  },
+  "aliyun_workspace_id": {
+    "type": "string",
+    "description": "阿里云百炼 Workspace ID",
+    "default": "",
+    "hint": "wan2.6/Qwen-Image 必填，即百炼业务空间 ID。不是 Workspace 名称，也不是 API Key。旧万相原生模式不需要。"
+  },
+  "aliyun_region": {
+    "type": "string",
+    "description": "阿里云百炼地域",
+    "default": "cn-beijing",
+    "options": ["cn-beijing", "ap-southeast-1", "us-east-1"],
+    "hint": "必须与 Workspace 和 API Key 所属地域一致：北京、新加坡或弗吉尼亚。"
   },
   "api_endpoint": {
     "type": "string",
@@ -28,13 +41,13 @@
     "type": "string",
     "description": "图片模型",
     "default": "",
-    "hint": "留空使用平台推荐模型；百炼兼容接口默认 wan2.6-t2i，也可填写 qwen-image-3.0-pro；旧 wanx2.1 模型请选择 aliyun_bailian_native。"
+    "hint": "留空使用平台推荐模型；百炼业务空间接口默认 wan2.6-t2i，也可填写 qwen-image-3.0-pro；旧 wanx2.1 模型请选择 aliyun_bailian_native。"
   },
   "size": {
     "type": "string",
     "description": "默认图片尺寸",
     "default": "1024x1024",
-    "hint": "必须是平台支持的尺寸，例如 1024x1024；百炼兼容接口会自动转换为 1024*1024。"
+    "hint": "必须是平台支持的尺寸，例如 1280x1280；百炼会自动转换为 1280*1280。Qwen-Image 可按模型文档使用 2048x2048。"
   },
   "quality": {
     "type": "string",

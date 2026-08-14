@@ -12,7 +12,7 @@
 
 在 AstrBot WebUI 的插件配置页先选择 `provider`，再填写 API Key。平台预设包括：
 
-- `aliyun_bailian`：阿里云百炼 OpenAI 兼容图片接口，支持 `wan2.6-t2i`、Qwen-Image 等新模型
+- `aliyun_bailian`：阿里云百炼业务空间多模态接口，支持 `wan2.6-t2i`、Qwen-Image 等新模型
 - `aliyun_bailian_native`：旧版通义万相原生异步接口，仅在使用 `wanx2.1-t2i-turbo` 等旧模型时选择
 - `volcengine_ark`：火山引擎方舟/豆包 Seedream
 - `zhipu`：智谱 CogView
@@ -25,7 +25,9 @@
 
 - `api_endpoint`：仅 `custom` 模式使用；推荐填写完整图片接口
 - `api_key`：平台密钥
-- `model`：留空使用平台预设模型。百炼兼容模式默认 `wan2.6-t2i`，也可填写 `qwen-image-3.0-pro`；火山方舟通常需要填推理接入点 ID
+- `aliyun_workspace_id`：使用 `wan2.6-t2i` 或 Qwen-Image 时必填，为百炼业务空间 ID
+- `aliyun_region`：Workspace 所在地域，必须与 API Key 匹配
+- `model`：留空使用平台预设模型。百炼业务空间模式默认 `wan2.6-t2i`，也可填写 `qwen-image-3.0-pro`；火山方舟通常需要填推理接入点 ID
 - `size`、`quality`、`response_format`：生成参数
 - `extra_headers`、`extra_payload`：平台需要的额外 JSON 参数
 
@@ -54,11 +56,11 @@
 
 ## 兼容性说明
 
-插件支持同步返回 URL/Base64 的 OpenAI Images API 兼容接口。百炼默认使用 `/compatible-mode/v1/images/generations`，避免把新模型错误地发送到旧万相协议；同时保留“提交任务 + 轮询结果”的旧版原生协议。图片 URL 通常有有效期，插件收到结果后会立即发送。
+插件支持同步返回 URL/Base64 的 OpenAI Images API 兼容接口。百炼新模型使用 Workspace 专属的 `/api/v1/services/aigc/multimodal-generation/generation` 和 `input.messages[].content[]` 请求结构；同时保留“提交任务 + 轮询结果”的旧版原生协议。图片 URL 通常有有效期，插件收到结果后会立即发送。
 
 ### 百炼升级说明
 
-从 1.2.0 起，`aliyun_bailian` 代表兼容接口。旧配置中的 `wanx2.1-t2i-turbo` 会自动迁移为兼容接口默认模型 `wan2.6-t2i`。如果仍需使用旧模型，请把平台改为 `aliyun_bailian_native` 并明确填写模型名。
+从 1.3.0 起，`aliyun_bailian` 使用官方要求的业务空间专属接口，必须配置 Workspace ID 和正确地域。旧配置中的 `wanx2.1-t2i-turbo` 会自动迁移为默认模型 `wan2.6-t2i`。如果仍需使用旧模型，请把平台改为 `aliyun_bailian_native` 并明确填写模型名。
 
 ## 404 排查
 

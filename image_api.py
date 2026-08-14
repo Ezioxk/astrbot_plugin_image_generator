@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -32,8 +33,9 @@ PROVIDERS: dict[str, ProviderPreset] = {
         "https://api.openai.com/v1/images/generations", "gpt-image-1"
     ),
     "aliyun_bailian": ProviderPreset(
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations",
+        "",
         "wan2.6-t2i",
+        "dashscope_multimodal",
     ),
     "aliyun_bailian_native": ProviderPreset(
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
@@ -81,17 +83,44 @@ class ImageAPIClient:
         configured_endpoint = str(config.get("api_endpoint", "")).strip()
         configured_model = str(config.get("model", "")).strip()
 
-        if preset:
+        if provider == "aliyun_bailian":
+            workspace_id = str(config.get("aliyun_workspace_id", "")).strip()
+            if not workspace_id:
+                raise ImageGenerationError(
+                    "使用 wan2.6/Qwen-Image 时必须配置阿里云百炼 Workspace ID（业务空间 ID）。"
+                )
+            if not re.fullmatch(r"[A-Za-z0-9-]+", workspace_id):
+                raise ImageGenerationError("百炼 Workspace ID 格式不正确。")
+            region = str(config.get("aliyun_region", "cn-beijing")).strip()
+            region_domains = {
+                "cn-beijing": "cn-beijing.maas.aliyuncs.com",
+                "ap-southeast-1": "ap-southeast-1.maas.aliyuncs.com",
+                "us-east-1": "us-east-1.maas.aliyuncs.com",
+            }
+            domain = region_domains.get(region)
+            if not domain:
+                raise ImageGenerationError(f"不支持的百炼地域：{region}")
+            endpoint = (
+                f"https://{workspace_id}.{domain}/api/v1/services/"
+                "aigc/multimodal-generation/generation"
+            )
+            protocol = "dashscope_multimodal"
+            old_defaults = {
+                "gpt-image-1",
+                "wanx-v1",
+                "wanx2.1-t2i-turbo",
+                "wanx2.1-t2i-plus",
+            }
+            model = (
+                configured_model
+                if configured_model and configured_model not in old_defaults
+                else "wan2.6-t2i"
+            )
+        elif preset:
             endpoint = preset.endpoint
             protocol = preset.protocol
             # 配置文件从旧版本升级时会保留旧默认值，平台预设必须使用自己的模型。
             old_defaults = {"gpt-image-1", "wanx-v1"}
-            if provider == "aliyun_bailian":
-                # 1.1 及更早版本将百炼绑定到旧万相原生协议。升级到兼容
-                # 接口后，遗留的 wanx 模型名不能继续作为默认值使用。
-                old_defaults.update(
-                    {"wanx2.1-t2i-turbo", "wanx2.1-t2i-plus"}
-                )
             model = (
                 configured_model
                 if configured_model and configured_model not in old_defaults
@@ -189,12 +218,54 @@ class ImageAPIClient:
         payload["parameters"]["size"] = str(payload["parameters"]["size"]).replace("x", "*")
         return payload
 
+    def _dashscope_multimodal_payload(self, prompt: str) -> dict[str, Any]:
+        """构造百炼 wan2.6/Qwen-Image 官方多模态生成请求。"""
+        parameters: dict[str, Any] = {
+            "prompt_extend": True,
+            "watermark": False,
+            "negative_prompt": "",
+            "size": (self.size or "1280*1280").replace("x", "*"),
+        }
+        if not self.model.startswith("qwen-image"):
+            parameters["n"] = 1
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"text": prompt}],
+                    }
+                ]
+            },
+            "parameters": parameters,
+        }
+        extra = dict(self.extra_payload)
+        extra_input = extra.pop("input", {})
+        extra_parameters = extra.pop("parameters", {})
+        payload.update(extra)
+        if isinstance(extra_input, Mapping):
+            payload["input"].update(extra_input)
+        if isinstance(extra_parameters, Mapping):
+            payload["parameters"].update(extra_parameters)
+        return payload
+
     async def generate(self, prompt: str) -> GeneratedImage:
         timeout = aiohttp.ClientTimeout(total=self.timeout)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 if self.protocol == "dashscope_async":
                     return await self._generate_dashscope(session, prompt)
+                if self.protocol == "dashscope_multimodal":
+                    data = await self._request_json(
+                        session,
+                        "POST",
+                        self.endpoint,
+                        self._headers(),
+                        self._dashscope_multimodal_payload(prompt),
+                    )
+                    return self._extract_image(data)
                 data = await self._request_json(
                     session, "POST", self.endpoint, self._headers(), self._openai_payload(prompt)
                 )
