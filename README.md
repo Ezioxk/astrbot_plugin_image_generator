@@ -2,6 +2,8 @@
 
 支持阿里云百炼等国内主流图片平台，支持用户命令主动调用，也会向 AstrBot 的 LLM 注册绘图工具，让 Bot 在用户要求画画时自行调用。
 
+仓库地址：<https://github.com/Ezioxk/astrbot_plugin_image_generator>
+
 ## 安装
 
 将整个 `astrbot_plugin_image_generator` 目录放入 AstrBot 的 `data/plugins/`，然后在 WebUI 的插件管理中重载/启用插件。AstrBot 会根据 `requirements.txt` 安装依赖。
