@@ -1,47 +1,10 @@
 {
-  "provider": {
+  "astrbot_provider_id": {
     "type": "string",
-    "description": "API 平台",
-    "default": "aliyun_bailian",
-    "options": ["aliyun_bailian", "aliyun_bailian_native", "volcengine_ark", "zhipu", "siliconflow", "baidu_qianfan", "openai", "custom"],
-    "hint": "aliyun_bailian 使用业务空间多模态接口，支持 wan2.6-t2i、Qwen-Image 等新模型；aliyun_bailian_native 仅用于旧万相异步模型。"
-  },
-  "aliyun_workspace_id": {
-    "type": "string",
-    "description": "阿里云百炼 Workspace ID",
+    "description": "AstrBot 图片模型提供商",
     "default": "",
-    "hint": "wan2.6/Qwen-Image 必填，即百炼业务空间 ID。不是 Workspace 名称，也不是 API Key。旧万相原生模式不需要。"
-  },
-  "aliyun_region": {
-    "type": "string",
-    "description": "阿里云百炼地域",
-    "default": "cn-beijing",
-    "options": ["cn-beijing", "ap-southeast-1", "us-east-1"],
-    "hint": "必须与 Workspace 和 API Key 所属地域一致：北京、新加坡或弗吉尼亚。"
-  },
-  "api_endpoint": {
-    "type": "string",
-    "description": "图片生成 API 地址",
-    "default": "https://api.openai.com/v1/images/generations",
-    "hint": "仅 custom 模式使用。可填完整地址；若以 /v1、/v2、/v3、/v4 结尾，会自动补 /images/generations。"
-  },
-  "api_key": {
-    "type": "string",
-    "description": "API Key",
-    "default": "",
-    "hint": "图片平台的密钥，请勿公开。"
-  },
-  "require_api_key": {
-    "type": "bool",
-    "description": "要求填写 API Key",
-    "default": true,
-    "hint": "本地无鉴权服务可关闭。"
-  },
-  "model": {
-    "type": "string",
-    "description": "图片模型",
-    "default": "",
-    "hint": "留空使用平台推荐模型；百炼业务空间接口默认 wan2.6-t2i，也可填写 qwen-image-3.0-pro；旧 wanx2.1 模型请选择 aliyun_bailian_native。"
+    "_special": "select_provider",
+    "hint": "直接选择“模型提供商”页面中专门用于生图的模型。插件会复用其 API Base、API Key、自定义请求头和模型名称；留空则继续使用下方旧版手动配置。"
   },
   "size": {
     "type": "string",
@@ -49,61 +12,191 @@
     "default": "1024x1024",
     "hint": "必须是平台支持的尺寸，例如 1280x1280；百炼会自动转换为 1280*1280。Qwen-Image 可按模型文档使用 2048x2048。"
   },
-  "quality": {
-    "type": "string",
-    "description": "图片质量",
-    "default": "auto",
-    "options": ["auto", "low", "medium", "high", "standard", "hd"],
-    "hint": "auto 表示不向 API 发送 quality 字段，兼容性最好。"
-  },
-  "response_format": {
-    "type": "string",
-    "description": "期望响应格式",
-    "default": "auto",
-    "options": ["auto", "url", "b64_json"],
-    "hint": "auto 不发送 response_format，并自动识别 URL 或 Base64 响应。"
-  },
   "timeout": {
     "type": "int",
     "description": "请求超时（秒）",
     "default": 180,
     "hint": "生成图片通常耗时较长。"
   },
+  "show_advanced_settings": {
+    "type": "bool",
+    "description": "显示高级/手动配置",
+    "default": false,
+    "hint": "仅在需要覆盖模型、协议、接口地址，或继续使用旧版插件独立配置时开启。"
+  },
+  "astrbot_protocol": {
+    "type": "string",
+    "description": "AstrBot 提供商图片协议",
+    "default": "auto",
+    "options": ["auto", "openai", "dashscope_multimodal", "dashscope_async"],
+    "hint": "auto 会根据提供商域名和模型名判断：百炼 wan2.6/Qwen-Image 使用多模态接口，wanx 使用旧异步接口，其余使用 OpenAI Images 接口。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "astrbot_model_override": {
+    "type": "string",
+    "description": "覆盖 AstrBot 提供商模型",
+    "default": "",
+    "hint": "通常留空，直接使用所选模型提供商的模型名称。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "astrbot_endpoint_override": {
+    "type": "string",
+    "description": "覆盖 AstrBot 提供商图片接口",
+    "default": "",
+    "hint": "通常留空，由 API Base 和图片协议自动生成完整接口地址。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "provider": {
+    "type": "string",
+    "description": "手动配置：API 平台",
+    "default": "aliyun_bailian",
+    "options": ["aliyun_bailian", "aliyun_bailian_native", "volcengine_ark", "zhipu", "siliconflow", "baidu_qianfan", "openai", "custom"],
+    "hint": "仅当未选择 AstrBot 图片模型提供商时使用。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "aliyun_workspace_id": {
+    "type": "string",
+    "description": "手动配置：阿里云百炼 Workspace ID",
+    "default": "",
+    "hint": "wan2.6/Qwen-Image 必填，即百炼业务空间 ID。不是 Workspace 名称，也不是 API Key。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "aliyun_region": {
+    "type": "string",
+    "description": "手动配置：阿里云百炼地域",
+    "default": "cn-beijing",
+    "options": ["cn-beijing", "ap-southeast-1", "us-east-1"],
+    "hint": "必须与 Workspace 和 API Key 所属地域一致。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "api_endpoint": {
+    "type": "string",
+    "description": "手动配置：图片生成 API 地址",
+    "default": "https://api.openai.com/v1/images/generations",
+    "hint": "仅 custom 模式使用。可填完整地址；若以 /v1、/v2、/v3、/v4 结尾，会自动补 /images/generations。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "api_key": {
+    "type": "string",
+    "description": "手动配置：API Key",
+    "default": "",
+    "hint": "仅当未选择 AstrBot 图片模型提供商时使用。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "model": {
+    "type": "string",
+    "description": "手动配置：图片模型",
+    "default": "",
+    "hint": "留空使用平台推荐模型；百炼业务空间接口默认 wan2.6-t2i。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "protocol": {
+    "type": "string",
+    "description": "手动配置：自定义接口协议",
+    "default": "openai",
+    "options": ["openai", "dashscope_async"],
+    "hint": "仅 custom 模式使用。",
+    "condition": {
+      "astrbot_provider_id": "",
+      "show_advanced_settings": true
+    }
+  },
+  "require_api_key": {
+    "type": "bool",
+    "description": "要求 API Key",
+    "default": true,
+    "hint": "本地无鉴权服务可关闭。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "quality": {
+    "type": "string",
+    "description": "图片质量",
+    "default": "auto",
+    "options": ["auto", "low", "medium", "high", "standard", "hd"],
+    "hint": "auto 表示不向 API 发送 quality 字段，兼容性最好。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
+  "response_format": {
+    "type": "string",
+    "description": "期望响应格式",
+    "default": "auto",
+    "options": ["auto", "url", "b64_json"],
+    "hint": "auto 不发送 response_format，并自动识别 URL 或 Base64 响应。",
+    "condition": {
+      "show_advanced_settings": true
+    }
+  },
   "poll_interval": {
     "type": "float",
     "description": "异步任务轮询间隔（秒）",
     "default": 2.0,
-    "hint": "仅 aliyun_bailian_native 或 custom + dashscope_async 使用；兼容接口忽略。"
-  },
-  "protocol": {
-    "type": "string",
-    "description": "自定义接口协议",
-    "default": "openai",
-    "options": ["openai", "dashscope_async"],
-    "hint": "仅 custom 模式使用。普通兼容接口选 openai，百炼原生异步接口选 dashscope_async。"
+    "hint": "仅旧版百炼异步接口使用。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "auth_header": {
     "type": "string",
     "description": "鉴权请求头",
     "default": "Authorization",
-    "hint": "大多数平台使用 Authorization。"
+    "hint": "大多数平台使用 Authorization。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "auth_prefix": {
     "type": "string",
     "description": "密钥前缀",
     "default": "Bearer ",
-    "hint": "Bearer 后面包含一个空格；若平台不需要前缀则留空。"
+    "hint": "Bearer 后面包含一个空格；若平台不需要前缀则留空。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "extra_headers": {
     "type": "text",
     "description": "额外请求头（JSON）",
     "default": "{}",
-    "hint": "例如 {\"X-API-Version\": \"2025-01\"}。同名字段会覆盖默认请求头。"
+    "hint": "会覆盖模型提供商中的同名自定义请求头。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   },
   "extra_payload": {
     "type": "text",
     "description": "额外请求参数（JSON）",
     "default": "{}",
-    "hint": "用于平台专属参数。prompt/model/size/quality/response_format/n 中已启用的字段会覆盖这里的同名值。"
+    "hint": "用于平台专属参数。",
+    "condition": {
+      "show_advanced_settings": true
+    }
   }
 }

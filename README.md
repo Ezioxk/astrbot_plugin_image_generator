@@ -1,6 +1,6 @@
 # AstrBot 可配置图片生成插件
 
-支持阿里云百炼等国内主流图片平台，支持用户命令主动调用，也会向 AstrBot 的 LLM 注册绘图工具，让 Bot 在用户要求画画时自行调用。
+支持复用 AstrBot“模型提供商”页面中已经配置好的 API Base、API Key、自定义请求头和模型名称，也保留旧版插件独立配置。提供 `/画图` 命令和 `generate_image` LLM 工具。
 
 仓库地址：<https://github.com/Ezioxk/astrbot_plugin_image_generator>
 
@@ -8,41 +8,46 @@
 
 将整个 `astrbot_plugin_image_generator` 目录放入 AstrBot 的 `data/plugins/`，然后在 WebUI 的插件管理中重载/启用插件。AstrBot 会根据 `requirements.txt` 安装依赖。
 
-## 配置
+## 推荐配置：复用 AstrBot 模型提供商
 
-在 AstrBot WebUI 的插件配置页先选择 `provider`，再填写 API Key。平台预设包括：
+1. 在 AstrBot WebUI 的“模型提供商 → 对话”中新增一个专门用于图片生成的模型，例如命名为“生图”。
+2. 在该模型中配置平台的 API Base、API Key 和图片模型名称。
+3. 打开本插件配置，在“AstrBot 图片模型提供商”下拉框中选择这个模型。
+4. 设置默认图片尺寸和请求超时，保存即可。
 
-- `aliyun_bailian`：阿里云百炼业务空间多模态接口，支持 `wan2.6-t2i`、Qwen-Image 等新模型
-- `aliyun_bailian_native`：旧版通义万相原生异步接口，仅在使用 `wanx2.1-t2i-turbo` 等旧模型时选择
-- `volcengine_ark`：火山引擎方舟/豆包 Seedream
-- `zhipu`：智谱 CogView
-- `siliconflow`：硅基流动 FLUX 等模型
-- `baidu_qianfan`：百度智能云千帆
-- `openai`：OpenAI
-- `custom`：其他 OpenAI Images API 兼容服务
+以后更换 API 地址、Key 或模型时，只需修改“模型提供商”中的对应模型，不需要再修改插件配置。插件不会把提供商的 API Key 复制保存到插件配置中。
 
-主要配置：
+### 阿里云百炼
 
-- `api_endpoint`：仅 `custom` 模式使用；推荐填写完整图片接口
-- `api_key`：平台密钥
-- `aliyun_workspace_id`：使用 `wan2.6-t2i` 或 Qwen-Image 时必填，为百炼业务空间 ID
-- `aliyun_region`：Workspace 所在地域，必须与 API Key 匹配
-- `model`：留空使用平台预设模型。百炼业务空间模式默认 `wan2.6-t2i`，也可填写 `qwen-image-3.0-pro`；火山方舟通常需要填推理接入点 ID
-- `size`、`quality`、`response_format`：生成参数
-- `extra_headers`、`extra_payload`：平台需要的额外 JSON 参数
+模型提供商的 API Base 可以填写百炼兼容模式地址，例如：
 
-除 `aliyun_bailian_native` 外，平台默认按 OpenAI Images API 兼容格式发送：
-
-```json
-{
-  "model": "gpt-image-1",
-  "prompt": "图片描述",
-  "size": "1024x1024",
-  "n": 1
-}
+```text
+https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
-插件可自动识别常见响应字段：`data[0].url`、`data[0].b64_json`、`image_url`、`base64`、`image_base64`。
+或业务空间提供的兼容模式地址：
+
+```text
+https://<workspace-host>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+```
+
+插件在协议为 `auto` 时会自动选择正确接口：
+
+- `wan2.6-t2i`、`qwen-image-*`：将兼容模式 Base 转为同一域名下的百炼多模态生成接口。
+- `wanx*`：使用旧版万相异步任务接口。
+- 其他平台：默认按 OpenAI Images API，在 Base 后补充 `/images/generations`。
+
+因此不要把百炼控制台页面地址填入 API Base，也不需要在插件中重复填写 Workspace ID。
+
+## 高级与旧版手动配置
+
+开启“显示高级/手动配置”后可以：
+
+- 覆盖所选 AstrBot 提供商的图片协议、模型或完整图片接口地址。
+- 设置质量、响应格式、自定义鉴权头、额外请求头和额外请求参数。
+- 在未选择 AstrBot 图片模型提供商时，继续使用旧版的平台预设、API Key、Workspace ID 等独立配置。
+
+自动判断不适合某个平台时，先把“AstrBot 提供商图片协议”改为对应协议；仍有特殊路径时再填写“覆盖 AstrBot 提供商图片接口”。
 
 ## 使用
 
@@ -52,16 +57,12 @@
 /画图 一只戴宇航员头盔的橘猫，电影感灯光
 ```
 
-正常对话时，LLM 可调用 `generate_image` 工具。请同时在 AstrBot 的工具管理中确认该工具没有被停用；只有当用户明确要求生成图片时，工具描述才会引导模型调用。
+正常对话时，LLM 可调用 `generate_image` 工具。请同时在 AstrBot 的工具管理中确认该工具没有被停用。
 
-## 兼容性说明
+## 支持的响应
 
-插件支持同步返回 URL/Base64 的 OpenAI Images API 兼容接口。百炼新模型使用 Workspace 专属的 `/api/v1/services/aigc/multimodal-generation/generation` 和 `input.messages[].content[]` 请求结构；同时保留“提交任务 + 轮询结果”的旧版原生协议。图片 URL 通常有有效期，插件收到结果后会立即发送。
+插件可自动从常见 JSON 响应结构中提取图片 URL 或 Base64 数据，包括 `data[0].url`、`data[0].b64_json`、`image_url`、`base64` 和 `image_base64`。图片 URL 通常有有效期，插件收到结果后会立即发送。
 
-### 百炼升级说明
+## 安全提示
 
-从 1.3.0 起，`aliyun_bailian` 使用官方要求的业务空间专属接口，必须配置 Workspace ID 和正确地域。旧配置中的 `wanx2.1-t2i-turbo` 会自动迁移为默认模型 `wan2.6-t2i`。如果仍需使用旧模型，请把平台改为 `aliyun_bailian_native` 并明确填写模型名。
-
-## 404 排查
-
-出现 `HTTP 404` 一般代表域名可以访问，但接口路径不对。建议直接选择正确的 `provider`，不要把控制台地址、API 根地址或聊天补全地址填入图片接口。新版错误会显示实际请求 URL，便于定位。
+不要在截图、聊天或 GitHub 提交中公开 API Key。如果密钥已经出现在截图或聊天中，请立即到平台控制台撤销并重新生成。

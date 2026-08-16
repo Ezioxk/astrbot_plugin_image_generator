@@ -154,6 +154,182 @@ class ImageAPIClient:
             extra_payload=cls._json_object(config.get("extra_payload", "{}"), "额外请求参数"),
         )
 
+    @classmethod
+    def from_astrbot_provider(
+        cls,
+        provider_config: Mapping[str, Any],
+        plugin_config: Mapping[str, Any],
+        *,
+        api_key: str = "",
+    ) -> "ImageAPIClient":
+        """Create a client from an AstrBot chat provider configuration.
+
+        Args:
+            provider_config: The merged configuration loaded by AstrBot.
+            plugin_config: Image-generation-only plugin settings.
+            api_key: The provider instance's currently selected API key.
+
+        Returns:
+            A configured image API client.
+
+        Raises:
+            ImageGenerationError: If required provider settings are unavailable.
+        """
+        provider_id = str(provider_config.get("id", "")).strip() or "unknown"
+        provider_type = str(provider_config.get("type", "")).strip()
+        api_base = ""
+        for key in ("api_base", "base_url", "api_url", "endpoint"):
+            value = str(provider_config.get(key, "") or "").strip()
+            if value:
+                api_base = value
+                break
+        if not api_base and provider_type.startswith("openai"):
+            api_base = "https://api.openai.com/v1"
+        if not api_base:
+            raise ImageGenerationError(
+                f"AstrBot 模型提供商“{provider_id}”没有可复用的 API Base。"
+            )
+
+        model = str(plugin_config.get("astrbot_model_override", "") or "").strip()
+        if not model:
+            model = str(provider_config.get("model", "") or "").strip()
+        if not model:
+            raise ImageGenerationError(
+                f"AstrBot 模型提供商“{provider_id}”没有配置模型名称。"
+            )
+
+        protocol = str(
+            plugin_config.get("astrbot_protocol", "auto") or "auto"
+        ).strip()
+        if protocol == "auto":
+            hostname = (urlparse(api_base).hostname or "").lower()
+            model_lower = model.lower()
+            is_aliyun = hostname == "dashscope.aliyuncs.com" or hostname.endswith(
+                ".maas.aliyuncs.com"
+            )
+            if is_aliyun and (
+                model_lower.startswith("qwen-image")
+                or re.match(r"^wan\d", model_lower)
+            ):
+                protocol = "dashscope_multimodal"
+            elif is_aliyun and model_lower.startswith("wanx"):
+                protocol = "dashscope_async"
+            else:
+                protocol = "openai"
+        if protocol not in {
+            "openai",
+            "dashscope_multimodal",
+            "dashscope_async",
+        }:
+            raise ImageGenerationError(f"不支持的图片接口协议：{protocol}")
+
+        endpoint_override = str(
+            plugin_config.get("astrbot_endpoint_override", "") or ""
+        ).strip()
+        endpoint = cls._endpoint_for_protocol(endpoint_override or api_base, protocol)
+
+        api_key = str(api_key or "").strip()
+        if not api_key:
+            raw_keys = provider_config.get("key", provider_config.get("api_key", ""))
+            if isinstance(raw_keys, str):
+                api_key = raw_keys.strip()
+            elif isinstance(raw_keys, (list, tuple)):
+                api_key = next(
+                    (
+                        str(key).strip()
+                        for key in raw_keys
+                        if key is not None and str(key).strip()
+                    ),
+                    "",
+                )
+
+        provider_headers = provider_config.get("custom_headers", {})
+        headers: dict[str, str] = {}
+        if isinstance(provider_headers, Mapping):
+            headers.update({str(k): str(v) for k, v in provider_headers.items()})
+        headers.update(
+            {
+                str(k): str(v)
+                for k, v in cls._json_object(
+                    plugin_config.get("extra_headers", "{}"), "额外请求头"
+                ).items()
+            }
+        )
+        has_auth_header = any(
+            key.lower() in {"authorization", "x-api-key", "api-key"}
+            for key in headers
+        )
+        if (
+            not api_key
+            and bool(plugin_config.get("require_api_key", True))
+            and not has_auth_header
+        ):
+            raise ImageGenerationError(
+                f"AstrBot 模型提供商“{provider_id}”没有可用的 API Key。"
+            )
+
+        return cls(
+            provider=f"astrbot:{provider_id}",
+            protocol=protocol,
+            endpoint=endpoint,
+            api_key=api_key,
+            model=model,
+            size=str(plugin_config.get("size", "1024x1024")).strip(),
+            quality=str(plugin_config.get("quality", "auto")).strip(),
+            response_format=str(
+                plugin_config.get("response_format", "auto")
+            ).strip(),
+            timeout=max(1.0, float(plugin_config.get("timeout", 180))),
+            poll_interval=max(0.5, float(plugin_config.get("poll_interval", 2))),
+            auth_header=str(
+                plugin_config.get("auth_header", "Authorization")
+            ).strip(),
+            auth_prefix=str(plugin_config.get("auth_prefix", "Bearer ")),
+            extra_headers=headers,
+            extra_payload=cls._json_object(
+                plugin_config.get("extra_payload", "{}"), "额外请求参数"
+            ),
+        )
+
+    @classmethod
+    def _endpoint_for_protocol(cls, api_base: str, protocol: str) -> str:
+        """Resolve a provider base URL to the selected image API endpoint.
+
+        Args:
+            api_base: Base URL or complete endpoint from the provider.
+            protocol: Image request protocol.
+
+        Returns:
+            The complete image-generation endpoint.
+
+        Raises:
+            ImageGenerationError: If the URL is incomplete.
+        """
+        endpoint = api_base.strip().rstrip("/")
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ImageGenerationError("模型提供商的 API Base 不是有效的 HTTP(S) 地址。")
+
+        path = parsed.path.rstrip("/")
+        if protocol == "dashscope_multimodal":
+            suffix = "/api/v1/services/aigc/multimodal-generation/generation"
+            if path.endswith(suffix):
+                return endpoint
+            return f"{parsed.scheme}://{parsed.netloc}{suffix}"
+        if protocol == "dashscope_async":
+            suffix = "/api/v1/services/aigc/text2image/image-synthesis"
+            if path.endswith(suffix):
+                return endpoint
+            return f"{parsed.scheme}://{parsed.netloc}{suffix}"
+
+        if path.endswith("/images/generations"):
+            return endpoint
+        for suffix in ("/chat/completions", "/responses"):
+            if path.endswith(suffix):
+                endpoint = endpoint[: -len(suffix)]
+                break
+        return cls._normalize_custom_endpoint(endpoint)
+
     @staticmethod
     def _normalize_custom_endpoint(endpoint: str) -> str:
         endpoint = endpoint.rstrip("/")

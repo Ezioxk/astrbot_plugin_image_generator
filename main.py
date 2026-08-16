@@ -12,7 +12,7 @@ from .image_api import ImageAPIClient, ImageGenerationError, GeneratedImage
     "image_generator",
     "Siyo",
     "可配置图片生成 API，并提供绘图命令与 LLM 绘图工具",
-    "1.3.0",
+    "1.4.0",
 )
 class ImageGeneratorPlugin(star.Star):
     def __init__(self, context: star.Context, config: AstrBotConfig) -> None:
@@ -20,7 +20,51 @@ class ImageGeneratorPlugin(star.Star):
         self.config = config
 
     def _client(self) -> ImageAPIClient:
-        return ImageAPIClient.from_config(self.config)
+        provider_id = str(self.config.get("astrbot_provider_id", "")).strip()
+        if not provider_id:
+            return ImageAPIClient.from_config(self.config)
+
+        provider = self.context.get_provider_by_id(provider_id)
+        if provider is None:
+            raise ImageGenerationError(
+                f"AstrBot 模型提供商“{provider_id}”不存在或未启用，请重新选择。"
+            )
+
+        provider_config = getattr(provider, "provider_config", None)
+        if not isinstance(provider_config, dict):
+            raise ImageGenerationError(
+                f"无法读取 AstrBot 模型提供商“{provider_id}”的配置。"
+            )
+
+        api_key = ""
+        get_current_key = getattr(provider, "get_current_key", None)
+        if callable(get_current_key):
+            try:
+                api_key = str(get_current_key() or "").strip()
+            except Exception:
+                api_key = ""
+        if not api_key:
+            get_keys = getattr(provider, "get_keys", None)
+            if callable(get_keys):
+                try:
+                    keys = get_keys()
+                    if isinstance(keys, (list, tuple)):
+                        api_key = next(
+                            (
+                                str(key).strip()
+                                for key in keys
+                                if key is not None and str(key).strip()
+                            ),
+                            "",
+                        )
+                except Exception:
+                    api_key = ""
+
+        return ImageAPIClient.from_astrbot_provider(
+            provider_config,
+            self.config,
+            api_key=api_key,
+        )
 
     @staticmethod
     def _result(image: GeneratedImage) -> MessageEventResult:
